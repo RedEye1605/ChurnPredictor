@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import pickle
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -36,13 +37,40 @@ class FixedFeatureSelector(BaseEstimator, TransformerMixin):
         return self.support_mask
 
 
-# Register class in multiple modules to ensure unpickling works
+# Patch for sklearn compatibility issues
+class _RemainderColsList(list):
+    """Fallback for sklearn internal class"""
+    pass
+
+
+# Custom unpickler to handle missing sklearn internal classes
+class CompatibleUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        # Handle sklearn internal classes
+        if module == "sklearn.compose._column_transformer" and name == "_RemainderColsList":
+            return _RemainderColsList
+        # Handle FixedFeatureSelector
+        if name == "FixedFeatureSelector":
+            return FixedFeatureSelector
+        return super().find_class(module, name)
+
+
+# Register classes in multiple modules to ensure unpickling works
 sys.modules.setdefault("__main__", sys.modules[__name__])
 if "__main__" in sys.modules:
     setattr(sys.modules["__main__"], "FixedFeatureSelector", FixedFeatureSelector)
+    setattr(sys.modules["__main__"], "_RemainderColsList", _RemainderColsList)
 
-# Also register in current module
+# Also register in current module and sklearn module
 globals()["FixedFeatureSelector"] = FixedFeatureSelector
+globals()["_RemainderColsList"] = _RemainderColsList
+
+try:
+    from sklearn.compose import _column_transformer
+    if not hasattr(_column_transformer, "_RemainderColsList"):
+        _column_transformer._RemainderColsList = _RemainderColsList
+except Exception:
+    pass
 
 
 # Paths & constants
@@ -74,12 +102,22 @@ def load_artifacts():
     if not MODEL_PATH.exists() or not METADATA_PATH.exists():
         return None, None
     
-    # Ensure FixedFeatureSelector is available before unpickling
+    # Ensure classes are available before unpickling
     import __main__
     if not hasattr(__main__, "FixedFeatureSelector"):
         __main__.FixedFeatureSelector = FixedFeatureSelector
+    if not hasattr(__main__, "_RemainderColsList"):
+        __main__._RemainderColsList = _RemainderColsList
     
-    model = load(MODEL_PATH)
+    # Try loading with custom unpickler first
+    try:
+        with open(MODEL_PATH, "rb") as f:
+            model = CompatibleUnpickler(f).load()
+    except Exception as e:
+        st.warning(f"Using fallback loader due to: {str(e)[:100]}")
+        # Fallback to joblib with patched environment
+        model = load(MODEL_PATH)
+    
     with open(METADATA_PATH, encoding="utf-8") as f:
         metadata = json.load(f)
     return model, metadata
