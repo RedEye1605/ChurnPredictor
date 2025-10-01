@@ -112,8 +112,14 @@ def load_artifacts():
     # Load model using joblib (environment is already patched)
     try:
         model = load(MODEL_PATH)
+        # Verify model has predict_proba method
+        if not hasattr(model, 'predict_proba'):
+            st.error(f"Model loaded but missing predict_proba. Type: {type(model)}")
+            return None, None
     except Exception as e:
-        st.error(f"Failed to load model: {str(e)}")
+        st.error(f"Failed to load model: {str(e)[:200]}")
+        import traceback
+        st.code(traceback.format_exc())
         return None, None
     
     with open(METADATA_PATH, encoding="utf-8") as f:
