@@ -36,8 +36,13 @@ class FixedFeatureSelector(BaseEstimator, TransformerMixin):
         return self.support_mask
 
 
+# Register class in multiple modules to ensure unpickling works
 sys.modules.setdefault("__main__", sys.modules[__name__])
-setattr(sys.modules["__main__"], "FixedFeatureSelector", FixedFeatureSelector)
+if "__main__" in sys.modules:
+    setattr(sys.modules["__main__"], "FixedFeatureSelector", FixedFeatureSelector)
+
+# Also register in current module
+globals()["FixedFeatureSelector"] = FixedFeatureSelector
 
 
 # Paths & constants
@@ -68,6 +73,12 @@ def load_artifacts():
     """Load trained model and metadata"""
     if not MODEL_PATH.exists() or not METADATA_PATH.exists():
         return None, None
+    
+    # Ensure FixedFeatureSelector is available before unpickling
+    import __main__
+    if not hasattr(__main__, "FixedFeatureSelector"):
+        __main__.FixedFeatureSelector = FixedFeatureSelector
+    
     model = load(MODEL_PATH)
     with open(METADATA_PATH, encoding="utf-8") as f:
         metadata = json.load(f)
