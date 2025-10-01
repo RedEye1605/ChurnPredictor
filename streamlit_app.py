@@ -109,14 +109,12 @@ def load_artifacts():
     if not hasattr(__main__, "_RemainderColsList"):
         __main__._RemainderColsList = _RemainderColsList
     
-    # Try loading with custom unpickler first
+    # Load model using joblib (environment is already patched)
     try:
-        with open(MODEL_PATH, "rb") as f:
-            model = CompatibleUnpickler(f).load()
-    except Exception as e:
-        st.warning(f"Using fallback loader due to: {str(e)[:100]}")
-        # Fallback to joblib with patched environment
         model = load(MODEL_PATH)
+    except Exception as e:
+        st.error(f"Failed to load model: {str(e)}")
+        return None, None
     
     with open(METADATA_PATH, encoding="utf-8") as f:
         metadata = json.load(f)
